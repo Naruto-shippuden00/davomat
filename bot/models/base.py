@@ -15,6 +15,12 @@ async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_
 
 async def init_db():
     """Ma'lumotlar bazasini yaratish"""
+    import os
+    # data papkasini yaratish (Railway uchun)
+    db_dir = os.path.dirname(DATABASE_URL.split(':///')[-1].split('//')[-1])
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
+    
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
