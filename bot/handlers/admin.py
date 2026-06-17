@@ -26,9 +26,11 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         keyboard = [
             [InlineKeyboardButton("➕ Sinf qo'shish", callback_data="admin_add_class")],
             [InlineKeyboardButton("➕ O'quvchi qo'shish", callback_data="admin_add_student")],
+            [InlineKeyboardButton("➕ O'qituvchi qo'shish", callback_data="admin_add_teacher")],
             [InlineKeyboardButton("➕ Fan qo'shish", callback_data="admin_add_subject")],
             [InlineKeyboardButton("🏫 Sinflar ro'yxati", callback_data="admin_list_classes")],
             [InlineKeyboardButton("👥 O'quvchilar ro'yxati", callback_data="admin_list_students")],
+            [InlineKeyboardButton("👨‍🏫 O'qituvchilar ro'yxati", callback_data="admin_list_teachers")],
             [InlineKeyboardButton("📚 Fanlar ro'yxati", callback_data="admin_list_subjects")],
             [InlineKeyboardButton("🔙 Orqaga", callback_data="back_to_main")]
         ]
@@ -90,7 +92,37 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
             
-        elif query.data == "admin_add_subject":
+        elif query.data == "admin_add_teacher":
+            await query.message.edit_text(
+                "➕ YANGI O'QITUVCHI QO'SHISH\n\n"
+                "O'qituvchining Telegram ID sini kiriting:\n\n"
+                "💡 O'qituvchi @userinfobot ga /start yuborib, o'z ID sini olishi kerak."
+            )
+            context.user_data['admin_action'] = 'add_teacher_id'
+            
+        elif query.data == "admin_list_teachers":
+            from config import ROLE_TEACHER, ROLE_CLASS_TEACHER
+            teachers_result = await session.execute(
+                select(User).where(
+                    User.role.in_([ROLE_TEACHER, ROLE_CLASS_TEACHER]),
+                    User.is_active == True
+                )
+            )
+            teachers = teachers_result.scalars().all()
+            
+            if not teachers:
+                await query.message.edit_text("❌ Hali o'qituvchilar qo'shilmagan.")
+                return
+            
+            text = "👨‍🏫 O'QITUVCHILAR RO'YXATI\n\n"
+            for i, teacher in enumerate(teachers, 1):
+                role_emoji = "👔" if teacher.role == ROLE_CLASS_TEACHER else "👨‍🏫"
+                role_name = "Sinf rahbari" if teacher.role == ROLE_CLASS_TEACHER else "O'qituvchi"
+                text += f"{i}. {role_emoji} {teacher.full_name}\n"
+                text += f"   Telegram: @{teacher.username or 'N/A'}\n"
+                text += f"   Rol: {role_name}\n\n"
+            
+            await query.message.edit_text(text)
             await query.message.edit_text(
                 "➕ YANGI FAN QO'SHISH\n\n"
                 "Fan nomini kiriting (masalan: Matematika):"
@@ -219,6 +251,66 @@ async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 "Jinsini tanlang:",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
+            
+        elif action == 'add_teacher_id':
+            # O'qituvchi Telegram ID qabul qilish
+            try:
+                teacher_telegram_id = int(text.strip())
+            except ValueError:
+                await update.message.reply_text(
+                    "❌ Noto'g'ri format!\n"
+                    "Telegram ID raqam bo'lishi kerak.\n\n"
+                    "Misol: 123456789\n"
+                    "Yana urinib ko'ring:"
+                )
+                return
+            
+            # Telegram ID allaqachon mavjudmi?
+            existing_result = await session.execute(
+                select(User).where(User.telegram_id == teacher_telegram_id)
+            )
+            existing = existing_result.scalar_one_or_none()
+            
+            if existing:
+                await update.message.reply_text(
+                    f"❌ Bu Telegram ID allaqachon ro'yxatdan o'tgan!\n"
+                    f"Foydalanuvchi: {existing.full_name}\n"
+                    f"Rol: {get_role_name(existing.role)}"
+                )
+                context.user_data.clear()
+                return
+            
+            context.user_data['teacher_telegram_id'] = teacher_telegram_id
+            context.user_data['admin_action'] = 'add_teacher_name'
+            
+            await update.message.reply_text(
+                "O'qituvchining to'liq ismini kiriting:"
+            )
+            
+        elif action == 'add_teacher_name':
+            # O'qituvchi ismini qabul qilish
+            teacher_name = text.strip()
+            teacher_telegram_id = context.user_data.get('teacher_telegram_id')
+            
+            from config import ROLE_TEACHER
+            new_teacher = User(
+                telegram_id=teacher_telegram_id,
+                full_name=teacher_name,
+                role=ROLE_TEACHER,
+                is_active=True
+            )
+            session.add(new_teacher)
+            await session.commit()
+            
+            await update.message.reply_text(
+                f"✅ O'qituvchi muvaffaqiyatli qo'shildi!\n\n"
+                f"👨‍🏫 Ism: {teacher_name}\n"
+                f"🆔 Telegram ID: {teacher_telegram_id}\n"
+                f"📝 Rol: O'qituvchi\n\n"
+                f"O'qituvchi endi botga /start yuborib, davomat belgilashi mumkin!\n\n"
+                f"Yana o'qituvchi qo'shish uchun /admin buyrug'ini yuboring."
+            )
+            context.user_data.clear()
             
         elif action == 'add_subject':
             # Fan qo'shish

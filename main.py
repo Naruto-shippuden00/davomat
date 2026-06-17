@@ -107,11 +107,17 @@ def main():
     
     # Message handlers (admin text + general text combined)
     async def combined_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # Agar admin action bo'lsa, admin handler ishlatadi
-        if context.user_data.get('admin_action'):
+        # Admin action birinchi o'rinda tekshiriladi
+        admin_action = context.user_data.get('admin_action')
+        
+        # Agar admin action bo'lsa, to'g'ridan-to'g'ri admin handler
+        if admin_action:
+            from bot.handlers.admin import admin_text_handler
             await admin_text_handler(update, context)
-        else:
-            await text_message_handler(update, context)
+            return
+        
+        # Aks holda oddiy text handler
+        await text_message_handler(update, context)
     
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, combined_text_handler))
     
