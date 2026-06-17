@@ -159,6 +159,11 @@ async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         action = context.user_data.get('admin_action')
         
+        # Debug log
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Admin action: {action}, Text: {text}")
+        
         if action == 'add_class':
             # Sinf qo'shish
             class_name = text.strip().upper()  # 9-a -> 9-A
