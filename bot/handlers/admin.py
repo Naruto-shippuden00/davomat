@@ -123,6 +123,9 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
                 text += f"   Rol: {role_name}\n\n"
             
             await query.message.edit_text(text)
+            
+        elif query.data == "admin_add_subject":
+        elif query.data == "admin_add_subject":
             await query.message.edit_text(
                 "➕ YANGI FAN QO'SHISH\n\n"
                 "Fan nomini kiriting (masalan: Matematika):"
