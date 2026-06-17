@@ -1,6 +1,6 @@
 python-telegram-bot==20.7
-sqlalchemy==2.0.23
+sqlalchemy==2.0.35
 python-dotenv==1.0.0
-alembic==1.12.1
-aiosqlite==0.19.0
-pytz==2023.3
+alembic==1.13.3
+aiosqlite==0.20.0
+pytz==2024.1
