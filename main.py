@@ -102,7 +102,7 @@ def main():
     
     # Admin callback handlers
     from bot.handlers.admin import admin_callback_handler, admin_gender_callback, admin_text_handler
-    application.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^(admin_|add_student_to_)"))
+    application.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^(admin_)"))
     application.add_handler(CallbackQueryHandler(admin_gender_callback, pattern="^(gender_)"))
     
     # Message handlers (admin text + general text combined)
