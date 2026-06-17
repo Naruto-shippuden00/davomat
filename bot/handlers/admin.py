@@ -1,10 +1,14 @@
-"""Admin handlerlari"""
+"""Admin handlerlari - Sinf va o'quvchi boshqaruvi"""
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, ConversationHandler
 from sqlalchemy import select
+from datetime import date
 from bot.models import get_session, User, Class, Student, Subject
 from bot.utils.auth import check_user_permission, get_role_name
 from config import ROLE_ADMIN, EMOJI_STUDENTS, EMOJI_SETTINGS
+
+# Conversation states
+ADD_CLASS_NAME, ADD_CLASS_GRADE, ADD_STUDENT_NAME, ADD_STUDENT_CLASS, ADD_STUDENT_GENDER = range(5)
 
 async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin menyu"""
@@ -20,17 +24,245 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
         
         keyboard = [
-            [InlineKeyboardButton("👥 Foydalanuvchilar", callback_data="admin_users")],
-            [InlineKeyboardButton("🏫 Sinflar", callback_data="admin_classes")],
-            [InlineKeyboardButton("📚 Fanlar", callback_data="admin_subjects")],
-            [InlineKeyboardButton("👨‍🎓 O'quvchilar", callback_data="admin_students")],
-            [InlineKeyboardButton("📊 Umumiy statistika", callback_data="admin_stats")]
+            [InlineKeyboardButton("➕ Sinf qo'shish", callback_data="admin_add_class")],
+            [InlineKeyboardButton("➕ O'quvchi qo'shish", callback_data="admin_add_student")],
+            [InlineKeyboardButton("➕ Fan qo'shish", callback_data="admin_add_subject")],
+            [InlineKeyboardButton("🏫 Sinflar ro'yxati", callback_data="admin_list_classes")],
+            [InlineKeyboardButton("👥 O'quvchilar ro'yxati", callback_data="admin_list_students")],
+            [InlineKeyboardButton("📚 Fanlar ro'yxati", callback_data="admin_list_subjects")],
+            [InlineKeyboardButton("🔙 Orqaga", callback_data="back_to_main")]
         ]
         
         await update.message.reply_text(
-            f"{EMOJI_SETTINGS} Admin panel\n\nBo'limni tanlang:",
+            f"👑 ADMINISTRATOR PANELI\n\n"
+            f"Quyidagi amallarni bajarishingiz mumkin:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
+
+async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin callback handleri"""
+    query = update.callback_query
+    await query.answer()
+    
+    telegram_id = update.effective_user.id
+    
+    async for session in get_session():
+        has_permission, user, message = await check_user_permission(
+            session, telegram_id, [ROLE_ADMIN]
+        )
+        
+        if not has_permission:
+            await query.message.edit_text(message)
+            return
+        
+        if query.data == "admin_add_class":
+            await query.message.edit_text(
+                "➕ YANGI SINF QO'SHISH\n\n"
+                "Sinf nomini kiriting (masalan: 9-A):"
+            )
+            context.user_data['admin_action'] = 'add_class'
+            
+        elif query.data == "admin_add_student":
+            # Sinflarni ko'rsatish
+            classes_result = await session.execute(select(Class))
+            classes = classes_result.scalars().all()
+            
+            if not classes:
+                await query.message.edit_text(
+                    "❌ Avval sinf qo'shing!\n"
+                    "Admin panel → Sinf qo'shish"
+                )
+                return
+            
+            keyboard = []
+            for class_obj in classes:
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"{class_obj.name} sinf",
+                        callback_data=f"add_student_to_{class_obj.id}"
+                    )
+                ])
+            keyboard.append([InlineKeyboardButton("🔙 Orqaga", callback_data="back_to_admin")])
+            
+            await query.message.edit_text(
+                "➕ YANGI O'QUVCHI QO'SHISH\n\n"
+                "Qaysi sinfga qo'shmoqchisiz?",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            
+        elif query.data == "admin_add_subject":
+            await query.message.edit_text(
+                "➕ YANGI FAN QO'SHISH\n\n"
+                "Fan nomini kiriting (masalan: Matematika):"
+            )
+            context.user_data['admin_action'] = 'add_subject'
+            
+        elif query.data == "admin_list_classes":
+            classes_result = await session.execute(select(Class))
+            classes = classes_result.scalars().all()
+            
+            if not classes:
+                await query.message.edit_text("❌ Hali sinflar qo'shilmagan.")
+                return
+            
+            text = "🏫 SINFLAR RO'YXATI\n\n"
+            for class_obj in classes:
+                # O'quvchilar sonini hisoblash
+                students_result = await session.execute(
+                    select(Student).where(Student.class_id == class_obj.id, Student.is_active == True)
+                )
+                students_count = len(students_result.scalars().all())
+                text += f"📚 {class_obj.name} - {students_count} ta o'quvchi\n"
+            
+            await query.message.edit_text(text)
+            
+        elif query.data == "admin_list_students":
+            await students_list_handler_callback(query, session)
+            
+        elif query.data == "admin_list_subjects":
+            subjects_result = await session.execute(select(Subject))
+            subjects = subjects_result.scalars().all()
+            
+            if not subjects:
+                await query.message.edit_text("❌ Hali fanlar qo'shilmagan.")
+                return
+            
+            text = "📚 FANLAR RO'YXATI\n\n"
+            for i, subject in enumerate(subjects, 1):
+                text += f"{i}. {subject.name}\n"
+            
+            await query.message.edit_text(text)
+            
+        elif query.data.startswith("add_student_to_"):
+            class_id = int(query.data.split("_")[-1])
+            context.user_data['student_class_id'] = class_id
+            context.user_data['admin_action'] = 'add_student'
+            
+            class_obj = await session.get(Class, class_id)
+            await query.message.edit_text(
+                f"➕ {class_obj.name} SINFGA O'QUVCHI QO'SHISH\n\n"
+                f"O'quvchining to'liq ismini kiriting:"
+            )
+
+async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin text xabarlarini qayta ishlash"""
+    telegram_id = update.effective_user.id
+    text = update.message.text
+    
+    async for session in get_session():
+        has_permission, user, message = await check_user_permission(
+            session, telegram_id, [ROLE_ADMIN]
+        )
+        
+        if not has_permission:
+            return
+        
+        action = context.user_data.get('admin_action')
+        
+        if action == 'add_class':
+            # Sinf qo'shish
+            class_name = text.strip()
+            
+            # Sinf nomidan grade va section ajratish
+            try:
+                grade = int(class_name.split('-')[0])
+                section = class_name.split('-')[1] if '-' in class_name else 'A'
+            except:
+                await update.message.reply_text(
+                    "❌ Noto'g'ri format!\n"
+                    "To'g'ri format: 9-A, 10-B, 11-V"
+                )
+                return
+            
+            new_class = Class(
+                name=class_name,
+                grade=grade,
+                section=section,
+                academic_year="2023-2024"
+            )
+            session.add(new_class)
+            await session.commit()
+            
+            await update.message.reply_text(
+                f"✅ {class_name} sinf muvaffaqiyatli qo'shildi!\n\n"
+                f"Yana sinf qo'shish uchun /admin buyrug'ini yuboring."
+            )
+            context.user_data.clear()
+            
+        elif action == 'add_student':
+            # O'quvchi qo'shish - ism qabul qilindi
+            context.user_data['student_name'] = text.strip()
+            context.user_data['admin_action'] = 'add_student_gender'
+            
+            keyboard = [
+                [InlineKeyboardButton("👦 Erkak", callback_data="gender_erkak")],
+                [InlineKeyboardButton("👧 Ayol", callback_data="gender_ayol")]
+            ]
+            
+            await update.message.reply_text(
+                "Jinsini tanlang:",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            
+        elif action == 'add_subject':
+            # Fan qo'shish
+            subject_name = text.strip()
+            
+            # Fan kodi yaratish
+            code = ''.join([word[0].upper() for word in subject_name.split()[:3]])
+            
+            new_subject = Subject(
+                name=subject_name,
+                code=code
+            )
+            session.add(new_subject)
+            await session.commit()
+            
+            await update.message.reply_text(
+                f"✅ {subject_name} fani muvaffaqiyatli qo'shildi!\n\n"
+                f"Yana fan qo'shish uchun /admin buyrug'ini yuboring."
+            )
+            context.user_data.clear()
+
+async def admin_gender_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Jins tanlagandan keyin o'quvchi yaratish"""
+    query = update.callback_query
+    await query.answer()
+    
+    telegram_id = update.effective_user.id
+    
+    async for session in get_session():
+        has_permission, user, message = await check_user_permission(
+            session, telegram_id, [ROLE_ADMIN]
+        )
+        
+        if not has_permission:
+            return
+        
+        gender = "erkak" if query.data == "gender_erkak" else "ayol"
+        student_name = context.user_data.get('student_name')
+        class_id = context.user_data.get('student_class_id')
+        
+        new_student = Student(
+            full_name=student_name,
+            class_id=class_id,
+            gender=gender,
+            date_of_birth=date(2009, 1, 1),  # Default
+            is_active=True
+        )
+        session.add(new_student)
+        await session.commit()
+        
+        class_obj = await session.get(Class, class_id)
+        
+        await query.message.edit_text(
+            f"✅ O'quvchi muvaffaqiyatli qo'shildi!\n\n"
+            f"👤 Ism: {student_name}\n"
+            f"📚 Sinf: {class_obj.name}\n"
+            f"{'👦' if gender == 'erkak' else '👧'} Jins: {gender.capitalize()}\n\n"
+            f"Yana o'quvchi qo'shish uchun /admin buyrug'ini yuboring."
+        )
+        context.user_data.clear()
 
 async def students_list_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """O'quvchilar ro'yxati"""
@@ -38,54 +270,59 @@ async def students_list_handler(update: Update, context: ContextTypes.DEFAULT_TY
     
     async for session in get_session():
         has_permission, user, message = await check_user_permission(
-            session, telegram_id, [ROLE_ADMIN, ROLE_CLASS_TEACHER]
+            session, telegram_id, [ROLE_ADMIN]
         )
         
         if not has_permission:
             await update.message.reply_text(message)
             return
         
-        # Sinflarni olish
-        if user.role == ROLE_ADMIN:
-            classes_result = await session.execute(select(Class))
+        await students_list_handler_callback(update, session)
+
+async def students_list_handler_callback(update, session):
+    """O'quvchilar ro'yxatini ko'rsatish"""
+    classes_result = await session.execute(select(Class))
+    classes = classes_result.scalars().all()
+    
+    if not classes:
+        text = "❌ Hali sinflar qo'shilmagan."
+        if hasattr(update, 'callback_query'):
+            await update.callback_query.message.edit_text(text)
         else:
-            classes_result = await session.execute(
-                select(Class).where(Class.class_teacher_id == user.id)
-            )
+            await update.message.reply_text(text)
+        return
+    
+    response = f"{EMOJI_STUDENTS} O'QUVCHILAR RO'YXATI\n\n"
+    
+    for class_obj in classes:
+        students_result = await session.execute(
+            select(Student).where(
+                Student.class_id == class_obj.id,
+                Student.is_active == True
+            ).order_by(Student.full_name)
+        )
+        students = students_result.scalars().all()
         
-        classes = classes_result.scalars().all()
+        response += f"📚 {class_obj.name} sinf ({len(students)} ta o'quvchi)\n"
+        response += "━━━━━━━━━━━━━━━━━━━━\n"
         
-        if not classes:
-            await update.message.reply_text(
-                "❌ Sinflar topilmadi."
-            )
-            return
+        for i, student in enumerate(students, 1):
+            gender_emoji = "👦" if student.gender == "erkak" else "👧"
+            response += f"{i}. {gender_emoji} {student.full_name}\n"
         
-        response = f"{EMOJI_STUDENTS} O'QUVCHILAR RO'YXATI\n\n"
-        
-        for class_obj in classes:
-            students_result = await session.execute(
-                select(Student).where(
-                    Student.class_id == class_obj.id,
-                    Student.is_active == True
-                ).order_by(Student.full_name)
-            )
-            students = students_result.scalars().all()
-            
-            response += f"📚 {class_obj.name} sinf ({len(students)} ta o'quvchi)\n"
-            response += "━━━━━━━━━━━━━━━━━━━━\n"
-            
-            for i, student in enumerate(students, 1):
-                response += f"{i}. {student.full_name}\n"
-            
-            response += "\n"
-        
-        # Telegram xabar uzunligi chegarasi
-        if len(response) > 4000:
-            # Uzun xabarlarni bo'lib yuborish
-            parts = [response[i:i+4000] for i in range(0, len(response), 4000)]
-            for part in parts:
+        response += "\n"
+    
+    # Xabar uzunligi tekshiruvi
+    if len(response) > 4000:
+        parts = [response[i:i+4000] for i in range(0, len(response), 4000)]
+        for part in parts:
+            if hasattr(update, 'callback_query'):
+                await update.callback_query.message.reply_text(part)
+            else:
                 await update.message.reply_text(part)
+    else:
+        if hasattr(update, 'callback_query'):
+            await update.callback_query.message.edit_text(response)
         else:
             await update.message.reply_text(response)
 
@@ -112,29 +349,6 @@ async def settings_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Ism: {user.full_name}
 Rol: {role_name}
 Telegram: @{user.username or 'N/A'}
-Telefon: {user.phone or 'N/A'}
-
 """
         
-        if user.role in [ROLE_CLASS_TEACHER, ROLE_ADMIN]:
-            # Sinflar ma'lumoti
-            classes_result = await session.execute(
-                select(Class).where(Class.class_teacher_id == user.id)
-            )
-            classes = classes_result.scalars().all()
-            
-            if classes:
-                settings_text += "🏫 Sizning sinflaringiz:\n"
-                for class_obj in classes:
-                    settings_text += f"  • {class_obj.name}\n"
-        
-        settings_text += "\n💡 Sozlamalarni o'zgartirish uchun administrator bilan bog'laning."
-        
         await update.message.reply_text(settings_text)
-
-# Admin handlers ro'yxati
-admin_handlers = [
-    admin_menu_handler,
-    students_list_handler,
-    settings_handler
-]
