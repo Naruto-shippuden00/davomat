@@ -45,7 +45,6 @@ cp .env.example .env
 ```env
 BOT_TOKEN=your_telegram_bot_token_here
 DATABASE_URL=sqlite+aiosqlite:///./data/davomat.db
-TIMEZONE=Asia/Tashkent
 ADMIN_TELEGRAM_ID=123456789
 ```
 
