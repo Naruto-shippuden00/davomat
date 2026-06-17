@@ -1,7 +1,7 @@
 """Bot sozlamalari va konfiguratsiya"""
 import os
 from dotenv import load_dotenv
-import pytz
+from datetime import timezone, timedelta
 
 load_dotenv()
 
@@ -11,8 +11,8 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 # Database
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/davomat.db")
 
-# Timezone
-TIMEZONE = pytz.timezone(os.getenv("TIMEZONE", "Asia/Tashkent"))
+# Timezone (Tashkent UTC+5)
+TIMEZONE = timezone(timedelta(hours=5))
 
 # Admin
 ADMIN_TELEGRAM_ID = int(os.getenv("ADMIN_TELEGRAM_ID", 0))
