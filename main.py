@@ -51,6 +51,31 @@ async def post_init(application: Application):
     logger.info("Ma'lumotlar bazasini ishga tushirish...")
     await init_db()
     logger.info("Ma'lumotlar bazasi tayyor!")
+    
+    # Railway uchun - admin foydalanuvchi yaratish
+    from bot.models import get_session, User
+    from config import ADMIN_TELEGRAM_ID, ROLE_ADMIN
+    from sqlalchemy import select
+    
+    async for session in get_session():
+        # Admin borligini tekshirish
+        result = await session.execute(
+            select(User).where(User.telegram_id == ADMIN_TELEGRAM_ID)
+        )
+        admin = result.scalar_one_or_none()
+        
+        if not admin and ADMIN_TELEGRAM_ID:
+            # Admin yaratish
+            admin = User(
+                telegram_id=ADMIN_TELEGRAM_ID,
+                username="admin",
+                full_name="Administrator",
+                role=ROLE_ADMIN
+            )
+            session.add(admin)
+            await session.commit()
+            logger.info(f"Admin foydalanuvchi yaratildi: {ADMIN_TELEGRAM_ID}")
+        break
 
 def main():
     """Botni ishga tushirish"""
