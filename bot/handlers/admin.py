@@ -161,16 +161,27 @@ async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         if action == 'add_class':
             # Sinf qo'shish
-            class_name = text.strip()
+            class_name = text.strip().upper()  # 9-a -> 9-A
             
             # Sinf nomidan grade va section ajratish
-            try:
-                grade = int(class_name.split('-')[0])
-                section = class_name.split('-')[1] if '-' in class_name else 'A'
-            except:
+            if '-' not in class_name:
                 await update.message.reply_text(
                     "❌ Noto'g'ri format!\n"
-                    "To'g'ri format: 9-A, 10-B, 11-V"
+                    "To'g'ri format: 9-A, 10-B, 11-V\n\n"
+                    "Yana urinib ko'ring:"
+                )
+                return
+            
+            try:
+                parts = class_name.split('-')
+                grade = int(parts[0])
+                section = parts[1]
+            except (ValueError, IndexError):
+                await update.message.reply_text(
+                    "❌ Noto'g'ri format!\n"
+                    "To'g'ri format: 9-A, 10-B, 11-V\n\n"
+                    "Misol: 9-A\n"
+                    "Yana urinib ko'ring:"
                 )
                 return
             
