@@ -100,8 +100,14 @@ def main():
     application.add_handler(CallbackQueryHandler(attendance_callback_handler, pattern="^(select_class_|select_subject_|student_|status_|late_reason_|save_attendance|confirm_)"))
     application.add_handler(CallbackQueryHandler(reports_callback_handler, pattern="^(report_|select_class_)"))
     
-    # Message handlers
+    # Admin callback handlers
+    from bot.handlers.admin import admin_callback_handler, admin_gender_callback, admin_text_handler
+    application.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^(admin_)"))
+    application.add_handler(CallbackQueryHandler(admin_gender_callback, pattern="^(gender_)"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
+    
+    # Admin text handler (for adding data)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE, admin_text_handler))
     
     # Error handler
     application.add_error_handler(error_handler)
