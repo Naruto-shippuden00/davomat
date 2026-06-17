@@ -9,7 +9,11 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 # Database
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/davomat.db")
+# Railway uchun /data volume ishlatiladi
+if os.getenv("RAILWAY_ENVIRONMENT"):
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:////data/davomat.db")
+else:
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/davomat.db")
 
 # Timezone (Tashkent UTC+5)
 TIMEZONE = timezone(timedelta(hours=5))
